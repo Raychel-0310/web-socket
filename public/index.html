@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head><title>Chat</title></head>
+<body>
+  <input id="name" placeholder="Enter your name" />
+  <button onclick="connect()">Join Chat</button>
+  <div id="chatArea" style="display:none;">
+    <input id="msg" autocomplete="off" /><button onclick="send()">Send</button>
+    <ul id="chat"></ul>
+  </div>
+  <script>
+    let ws;
+
+    function connect() {
+      const name = document.getElementById("name").value;
+      if (!name) {
+        alert("名前を入力してください！");
+        return;
+      }
+      ws = new WebSocket("ws://localhost:8080/ws?name=" + encodeURIComponent(name));
+      document.getElementById("chatArea").style.display = "block";
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        const li = document.createElement("li");
+        li.textContent = `${msg.sender}: ${msg.content}`;
+        document.getElementById("chat").appendChild(li);
+      };
+    }
+
+    function send() {
+      const input = document.getElementById("msg");
+      ws.send(input.value);
+      input.value = "";
+    }
+  </script>
+</body>
+</html>
