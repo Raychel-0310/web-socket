@@ -23,8 +23,10 @@ type Claims struct {
 }
 
 type Message struct {
-	Sender  string `json:"sender"`
-	Content string `json:"content"`
+	Sender    string `json:"sender"`
+	Content   string `json:"content"`
+	Timestamp string `json:"timestamp"`
+	System    bool   `json:"system"`
 }
 
 type Client struct {
@@ -122,17 +124,41 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	rooms[room][ws] = username
 
+	// 入室メッセージ
+	broadcast <- RoomMessage{
+		Room: room,
+		Message: Message{
+			Sender:    "System",
+			Content:   fmt.Sprintf("%s が入室しました", username),
+			Timestamp: time.Now().Format("15:04:05"),
+			System:    true,
+		},
+	}
+
 	for {
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
 			delete(rooms[room], ws)
+
+			// 退室メッセージ
+			broadcast <- RoomMessage{
+				Room: room,
+				Message: Message{
+					Sender:    "System",
+					Content:   fmt.Sprintf("%s が退室しました", username),
+					Timestamp: time.Now().Format("15:04:05"),
+					System:    true,
+				},
+			}
 			break
 		}
 		broadcast <- RoomMessage{
 			Room: room,
 			Message: Message{
-				Sender:  username,
-				Content: string(msg),
+				Sender:    username,
+				Content:   string(msg),
+				Timestamp: time.Now().Format("15:04:05"),
+				System:    false,
 			},
 		}
 	}

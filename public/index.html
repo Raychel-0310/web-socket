@@ -46,7 +46,14 @@
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
         const li = document.createElement("li");
-        li.textContent = `${msg.sender}: ${msg.content}`;
+
+        if (msg.system) {
+          li.textContent = `[${msg.timestamp}] 🟡 ${msg.content}`;
+          li.style.color = "gray";
+        } else {
+          li.textContent = `[${msg.timestamp}] ${msg.sender}: ${msg.content}`;
+        }
+
         document.getElementById("chat").appendChild(li);
       };
 
