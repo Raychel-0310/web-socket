@@ -1,24 +1,48 @@
 <!DOCTYPE html>
 <html>
-<head><title>Chat</title></head>
+<head>
+  <meta charset="UTF-8">
+  <title>JWT Chat</title>
+</head>
 <body>
-  <input id="name" placeholder="Enter your name" />
-  <button onclick="connect()">Join Chat</button>
+  <h3>Login</h3>
+  <input id="username" placeholder="Username" />
+  <input id="password" type="password" placeholder="Password" />
+  <button onclick="login()">Login</button>
+
   <div id="chatArea" style="display:none;">
-    <input id="msg" autocomplete="off" /><button onclick="send()">Send</button>
+    <h3>Chat</h3>
+    <input id="msg" /><button onclick="send()">Send</button>
     <ul id="chat"></ul>
   </div>
+
   <script>
     let ws;
 
-    function connect() {
-      const name = document.getElementById("name").value;
-      if (!name) {
-        alert("名前を入力してください！");
-        return;
-      }
-      ws = new WebSocket("ws://localhost:8080/ws?name=" + encodeURIComponent(name));
-      document.getElementById("chatArea").style.display = "block";
+    function login() {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+
+      fetch("/login", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ username, password })
+      })
+      .then(res => {
+        if (!res.ok) throw new Error("Login failed");
+        return res.json();
+      })
+      .then(data => {
+        connect(data.token);
+      })
+      .catch(err => alert(err));
+    }
+
+    function connect(token) {
+      ws = new WebSocket("ws://localhost:8080/ws", token);
+      ws.onopen = () => {
+        document.getElementById("chatArea").style.display = "block";
+      };
 
       ws.onmessage = (event) => {
         const msg = JSON.parse(event.data);
@@ -26,12 +50,18 @@
         li.textContent = `${msg.sender}: ${msg.content}`;
         document.getElementById("chat").appendChild(li);
       };
+
+      ws.onerror = () => {
+        alert("WebSocket error or unauthorized.");
+      };
     }
 
     function send() {
       const input = document.getElementById("msg");
-      ws.send(input.value);
-      input.value = "";
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(input.value);
+        input.value = "";
+      }
     }
   </script>
 </body>
