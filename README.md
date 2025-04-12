@@ -14,4 +14,4 @@ web-socketを使ったことがなかったので、練習として簡単なア�
 - **Go**：サーバーサイド（WebSocket処理 + JWT認証）
 - **Gorilla WebSocket**：WebSocketライブラリ
 - **JWT（JSON Web Token）**：ユーザー認証トークン発行
-- **HTML/JavaScript**：簡易的なフロントエンド
+- **HTML/JavaScript**：フロントエンド
