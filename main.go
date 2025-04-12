@@ -10,7 +10,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var jwtKey = []byte("secret_key") // 本番では環境変数などで管理！
+var jwtKey = []byte("secret_key")
 
 type Credentials struct {
 	Username string `json:"username"`
@@ -30,11 +30,17 @@ type Message struct {
 type Client struct {
 	conn     *websocket.Conn
 	username string
+	room     string
 }
 
 var upgrader = websocket.Upgrader{}
-var clients = make(map[*websocket.Conn]string)
-var broadcast = make(chan Message)
+var rooms = make(map[string]map[*websocket.Conn]string) // room名 → conn → username
+var broadcast = make(chan RoomMessage)
+
+type RoomMessage struct {
+	Room    string
+	Message Message
+}
 
 func main() {
 	http.Handle("/", http.FileServer(http.Dir("./public")))
@@ -81,9 +87,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
 	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
-	// クライアントからのSec-WebSocket-Protocol（＝JWT）を返す設定
 	upgrader.Subprotocols = []string{r.Header.Get("Sec-WebSocket-Protocol")}
-
 
 	tokenStr := r.Header.Get("Sec-WebSocket-Protocol")
 	if tokenStr == "" {
@@ -100,6 +104,11 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	room := r.URL.Query().Get("room")
+	if room == "" {
+		room = "default"
+	}
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Println("Upgrade error:", err)
@@ -108,23 +117,32 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	defer ws.Close()
 
 	username := claims.Username
-	clients[ws] = username
+	if rooms[room] == nil {
+		rooms[room] = make(map[*websocket.Conn]string)
+	}
+	rooms[room][ws] = username
 
 	for {
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
-			delete(clients, ws)
+			delete(rooms[room], ws)
 			break
 		}
-		broadcast <- Message{Sender: username, Content: string(msg)}
+		broadcast <- RoomMessage{
+			Room: room,
+			Message: Message{
+				Sender:  username,
+				Content: string(msg),
+			},
+		}
 	}
 }
 
 func handleMessages() {
 	for {
-		msg := <-broadcast
-		for client := range clients {
-			client.WriteJSON(msg)
+		rm := <-broadcast
+		for client := range rooms[rm.Room] {
+			client.WriteJSON(rm.Message)
 		}
 	}
 }

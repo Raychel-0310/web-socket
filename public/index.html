@@ -1,13 +1,11 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <meta charset="UTF-8">
-  <title>JWT Chat</title>
-</head>
+<head><title>JWT Room Chat</title></head>
 <body>
   <h3>Login</h3>
   <input id="username" placeholder="Username" />
   <input id="password" type="password" placeholder="Password" />
+  <input id="room" placeholder="Room name (e.g. game1)" />
   <button onclick="login()">Login</button>
 
   <div id="chatArea" style="display:none;">
@@ -22,6 +20,7 @@
     function login() {
       const username = document.getElementById("username").value;
       const password = document.getElementById("password").value;
+      const room = document.getElementById("room").value || "default";
 
       fetch("/login", {
         method: "POST",
@@ -33,13 +32,13 @@
         return res.json();
       })
       .then(data => {
-        connect(data.token);
+        connect(data.token, room);
       })
       .catch(err => alert(err));
     }
 
-    function connect(token) {
-      ws = new WebSocket("ws://localhost:8080/ws", token);
+    function connect(token, room) {
+      ws = new WebSocket(`ws://localhost:8080/ws?room=${encodeURIComponent(room)}`, token);
       ws.onopen = () => {
         document.getElementById("chatArea").style.display = "block";
       };
