@@ -1,16 +1,21 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 )
 
 var jwtKey = []byte("secret_key")
+
+var db *sql.DB
 
 type Credentials struct {
 	Username string `json:"username"`
@@ -45,6 +50,25 @@ type RoomMessage struct {
 }
 
 func main() {
+	var err error
+	db, err = sql.Open("sqlite", "chat.db")
+	if err != nil {
+		panic(err)
+	}
+
+	createTable := `CREATE TABLE IF NOT EXISTS messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		sender TEXT,
+		content TEXT,
+		timestamp TEXT,
+		system INTEGER,
+		room TEXT
+	)`
+	_, err = db.Exec(createTable)
+	if err != nil {
+		panic(err)
+	}
+
 	http.Handle("/", http.FileServer(http.Dir("./public")))
 	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/ws", wsHandler)
@@ -124,43 +148,55 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	rooms[room][ws] = username
 
-	// 入室メッセージ
-	broadcast <- RoomMessage{
-		Room: room,
-		Message: Message{
-			Sender:    "System",
-			Content:   fmt.Sprintf("%s が入室しました", username),
-			Timestamp: time.Now().Format("15:04:05"),
-			System:    true,
-		},
+	// ルームの履歴を送信
+	rows, err := db.Query("SELECT sender, content, timestamp, system FROM messages WHERE room = ? ORDER BY id ASC", room)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var m Message
+			var sys int
+			err := rows.Scan(&m.Sender, &m.Content, &m.Timestamp, &sys)
+			if err == nil {
+				m.System = sys == 1
+				ws.WriteJSON(m)
+			}
+		}
 	}
+
+	// 入室メッセージ
+	entry := Message{
+		Sender:    "System",
+		Content:   fmt.Sprintf("%s が入室しました", username),
+		Timestamp: time.Now().Format("15:04:05"),
+		System:    true,
+	}
+	broadcast <- RoomMessage{Room: room, Message: entry}
+	saveMessage(room, entry)
 
 	for {
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
 			delete(rooms[room], ws)
 
-			// 退室メッセージ
-			broadcast <- RoomMessage{
-				Room: room,
-				Message: Message{
-					Sender:    "System",
-					Content:   fmt.Sprintf("%s が退室しました", username),
-					Timestamp: time.Now().Format("15:04:05"),
-					System:    true,
-				},
+			exit := Message{
+				Sender:    "System",
+				Content:   fmt.Sprintf("%s が退室しました", username),
+				Timestamp: time.Now().Format("15:04:05"),
+				System:    true,
 			}
+			broadcast <- RoomMessage{Room: room, Message: exit}
+			saveMessage(room, exit)
 			break
 		}
-		broadcast <- RoomMessage{
-			Room: room,
-			Message: Message{
-				Sender:    username,
-				Content:   string(msg),
-				Timestamp: time.Now().Format("15:04:05"),
-				System:    false,
-			},
+
+		newMsg := Message{
+			Sender:    username,
+			Content:   string(msg),
+			Timestamp: time.Now().Format("15:04:05"),
+			System:    false,
 		}
+		broadcast <- RoomMessage{Room: room, Message: newMsg}
+		saveMessage(room, newMsg)
 	}
 }
 
@@ -170,5 +206,17 @@ func handleMessages() {
 		for client := range rooms[rm.Room] {
 			client.WriteJSON(rm.Message)
 		}
+	}
+}
+
+func saveMessage(room string, m Message) {
+	sys := 0
+	if m.System {
+		sys = 1
+	}
+	_, err := db.Exec("INSERT INTO messages (sender, content, timestamp, system, room) VALUES (?, ?, ?, ?, ?)",
+		m.Sender, m.Content, m.Timestamp, sys, room)
+	if err != nil {
+		fmt.Println("Failed to save message:", err)
 	}
 }
