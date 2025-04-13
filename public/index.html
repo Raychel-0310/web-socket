@@ -1,47 +1,94 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>JWT Room Chat</title>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
-      background-color: #f2f2f2;
-      margin: 20px;
+      background-color: #fefefe;
+      padding: 20px;
     }
 
     h3 {
-      margin-top: 1em;
+      margin-bottom: 10px;
     }
 
     input {
-      margin: 0.3em;
-      padding: 0.4em;
+      margin: 5px;
+      padding: 8px;
+      font-size: 14px;
+    }
+
+    button {
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
     }
 
     #chat {
-      max-height: 300px;
+      max-height: 350px;
       overflow-y: auto;
-      border: 1px solid #ccc;
-      padding: 10px;
-      list-style: none;
       background: #fff;
-      margin-top: 1em;
-      width: 100%;
-      max-width: 600px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 10px;
+      margin-top: 10px;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
 
-    #chat li {
-      margin-bottom: 0.5em;
+    .message {
+      max-width: 70%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      word-wrap: break-word;
+      font-size: 14px;
+      line-height: 1.4;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      position: relative;
+    }
+
+    .me {
+      align-self: flex-end;
+      background: #f8c7d8; /* 薄ピンク */
+      color: #333;
+    }
+
+    .other {
+      align-self: flex-start;
+      background: #d9caff; /* 淡い紫 */
+      color: #333;
+    }
+
+    .timestamp {
+      font-size: 11px;
+      color: #666;
+      margin-top: 4px;
+      display: block;
+      text-align: right;
+    }
+
+    .sender {
+      font-weight: bold;
+      font-size: 13px;
+      color: #7f5af0;
+      display: block;
+      margin-bottom: 2px;
     }
 
     .system-message {
+      text-align: center;
       color: gray;
       font-style: italic;
+      font-size: 13px;
+      margin-top: 5px;
     }
 
     #chatArea {
-      margin-top: 2em;
+      margin-top: 30px;
     }
   </style>
 </head>
@@ -96,12 +143,19 @@
           li.textContent = `[${msg.timestamp}] 🟡 ${msg.content}`;
           li.className = "system-message";
         } else {
-          li.textContent = `[${msg.timestamp}] ${msg.sender}: ${msg.content}`;
+          const username = document.getElementById("username").value;
+          li.className = "message " + (msg.sender === username ? "me" : "other");
+
+          li.innerHTML = `
+            <span class="sender">${msg.sender}</span>
+            ${msg.content}
+            <span class="timestamp">${msg.timestamp}</span>
+          `;
         }
 
         const chat = document.getElementById("chat");
         chat.appendChild(li);
-        chat.scrollTop = chat.scrollHeight; // ⬅ 自動スクロール
+        chat.scrollTop = chat.scrollHeight; // 自動スクロール
       };
 
       ws.onerror = () => {
