@@ -53,13 +53,13 @@
 
     .me {
       align-self: flex-end;
-      background: #f8c7d8; /* 薄ピンク */
+      background: #f8c7d8;
       color: #333;
     }
 
     .other {
       align-self: flex-start;
-      background: #d9caff; /* 淡い紫 */
+      background: #d9caff;
       color: #333;
     }
 
@@ -87,6 +87,15 @@
       margin-top: 5px;
     }
 
+    .edit-btn, .delete-btn {
+      font-size: 12px;
+      margin-left: 10px;
+      background: none;
+      border: none;
+      color: #0077cc;
+      cursor: pointer;
+    }
+
     #chatArea {
       margin-top: 30px;
     }
@@ -109,6 +118,7 @@
 
   <script>
     let ws;
+    let token;
 
     function register() {
       const username = document.getElementById("username").value;
@@ -150,7 +160,8 @@
         return res.json();
       })
       .then(data => {
-        connect(data.token, room);
+        token = data.token;
+        connect(token, room);
       })
       .catch(err => alert(err));
     }
@@ -174,9 +185,24 @@
 
           li.innerHTML = `
             <span class="sender">${msg.sender}</span>
-            ${msg.content}
+            <span class="text">${msg.content}</span>
             <span class="timestamp">${msg.timestamp}</span>
           `;
+
+          if (msg.sender === username) {
+            const editBtn = document.createElement("button");
+            editBtn.textContent = "Edit";
+            editBtn.className = "edit-btn";
+            editBtn.onclick = () => editMessage(msg.id);
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.textContent = "Delete";
+            deleteBtn.className = "delete-btn";
+            deleteBtn.onclick = () => deleteMessage(msg.id);
+
+            li.appendChild(editBtn);
+            li.appendChild(deleteBtn);
+          }
         }
 
         const chat = document.getElementById("chat");
@@ -195,6 +221,22 @@
         ws.send(input.value);
         input.value = "";
       }
+    }
+
+    function editMessage(id) {
+      const newContent = prompt("新しいメッセージ内容を入力してください：");
+      if (newContent === null) return;
+      fetch("/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, token, content: newContent })
+      })
+      .then(res => res.ok ? alert("編集しました。リロードして確認してください。") : alert("編集に失敗しました。"));
+    }
+
+    function deleteMessage(id) {
+      fetch(`/delete?id=${id}&token=${token}`, { method: "DELETE" })
+        .then(res => res.ok ? alert("削除しました。リロードして確認してください。") : alert("削除に失敗しました。"));
     }
   </script>
 </body>
