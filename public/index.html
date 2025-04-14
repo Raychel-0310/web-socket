@@ -93,11 +93,12 @@
   </style>
 </head>
 <body>
-  <h3>Login</h3>
+  <h3>Login or Register</h3>
   <input id="username" placeholder="Username" />
   <input id="password" type="password" placeholder="Password" />
   <input id="room" placeholder="Room name (e.g. game1)" />
   <button onclick="login()">Login</button>
+  <button onclick="register()">Register</button>
 
   <div id="chatArea" style="display:none;">
     <h3>Chat</h3>
@@ -109,6 +110,31 @@
   <script>
     let ws;
 
+    function register() {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+      if (!username || !password) {
+        alert("ユーザー名とパスワードを入力してください");
+        return;
+      }
+
+      fetch("/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      })
+      .then(res => {
+        if (res.ok) {
+          alert("登録に成功しました！ログインしてください。");
+        } else {
+          alert("登録に失敗しました（ユーザー名の重複など）");
+        }
+      })
+      .catch(err => {
+        alert("エラーが発生しました: " + err.message);
+      });
+    }
+
     function login() {
       const username = document.getElementById("username").value;
       const password = document.getElementById("password").value;
@@ -116,7 +142,7 @@
 
       fetch("/login", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password })
       })
       .then(res => {
@@ -155,7 +181,7 @@
 
         const chat = document.getElementById("chat");
         chat.appendChild(li);
-        chat.scrollTop = chat.scrollHeight; // 自動スクロール
+        chat.scrollTop = chat.scrollHeight;
       };
 
       ws.onerror = () => {

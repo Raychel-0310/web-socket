@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -41,7 +42,7 @@ type Client struct {
 }
 
 var upgrader = websocket.Upgrader{}
-var rooms = make(map[string]map[*websocket.Conn]string) // room名 → conn → username
+var rooms = make(map[string]map[*websocket.Conn]string)
 var broadcast = make(chan RoomMessage)
 
 type RoomMessage struct {
@@ -56,20 +57,31 @@ func main() {
 		panic(err)
 	}
 
-	createTable := `CREATE TABLE IF NOT EXISTS messages (
+	// Create messages table
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS messages (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		sender TEXT,
 		content TEXT,
 		timestamp TEXT,
 		system INTEGER,
 		room TEXT
-	)`
-	_, err = db.Exec(createTable)
+	)`)
+	if err != nil {
+		panic(err)
+	}
+
+	// Create users table
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT UNIQUE,
+		password_hash TEXT
+	)`)
 	if err != nil {
 		panic(err)
 	}
 
 	http.Handle("/", http.FileServer(http.Dir("./public")))
+	http.HandleFunc("/register", registerHandler)
 	http.HandleFunc("/login", loginHandler)
 	http.HandleFunc("/ws", wsHandler)
 
@@ -79,15 +91,50 @@ func main() {
 	http.ListenAndServe(":8080", nil)
 }
 
-func loginHandler(w http.ResponseWriter, r *http.Request) {
+func registerHandler(w http.ResponseWriter, r *http.Request) {
 	var creds Credentials
-	err := json.NewDecoder(r.Body).Decode(&creds)
-	if err != nil || creds.Username == "" || creds.Password == "" {
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
 
-	if creds.Password != "password123" {
+	if creds.Username == "" || creds.Password == "" {
+		http.Error(w, "Missing username or password", http.StatusBadRequest)
+		return
+	}
+
+	// Hash the password
+	hashed, err := bcrypt.GenerateFromPassword([]byte(creds.Password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Could not hash password", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = db.Exec("INSERT INTO users (username, password_hash) VALUES (?, ?)", creds.Username, hashed)
+	if err != nil {
+		http.Error(w, "Username already exists or DB error", http.StatusConflict)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+}
+
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	var creds Credentials
+	if err := json.NewDecoder(r.Body).Decode(&creds); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	var storedHash string
+	err := db.QueryRow("SELECT password_hash FROM users WHERE username = ?", creds.Username).Scan(&storedHash)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(storedHash), []byte(creds.Password))
+	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -106,9 +153,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
-		"token": tokenString,
-	})
+	json.NewEncoder(w).Encode(map[string]string{"token": tokenString})
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request) {
@@ -148,22 +193,19 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	rooms[room][ws] = username
 
-	// ルームの履歴を送信
 	rows, err := db.Query("SELECT sender, content, timestamp, system FROM messages WHERE room = ? ORDER BY id ASC", room)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var m Message
 			var sys int
-			err := rows.Scan(&m.Sender, &m.Content, &m.Timestamp, &sys)
-			if err == nil {
+			if err := rows.Scan(&m.Sender, &m.Content, &m.Timestamp, &sys); err == nil {
 				m.System = sys == 1
 				ws.WriteJSON(m)
 			}
 		}
 	}
 
-	// 入室メッセージ
 	entry := Message{
 		Sender:    "System",
 		Content:   fmt.Sprintf("%s が入室しました", username),
@@ -177,7 +219,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		_, msg, err := ws.ReadMessage()
 		if err != nil {
 			delete(rooms[room], ws)
-
 			exit := Message{
 				Sender:    "System",
 				Content:   fmt.Sprintf("%s が退室しました", username),
